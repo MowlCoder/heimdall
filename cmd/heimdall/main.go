@@ -51,7 +51,7 @@ func main() {
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	serviceChecker := checker.NewServiceChecker(notifierManager, cfg.Services)
+	serviceChecker := checker.NewServiceChecker(notifierManager, cfg.Services, cfg.MetricsBackend)
 	serviceChecker.Start(ctx)
 
 	log.Println("[INFO]: heimdall service status checker was started")

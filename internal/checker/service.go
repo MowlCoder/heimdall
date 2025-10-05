@@ -2,6 +2,7 @@ package checker
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"log"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/MowlCoder/heimdall/internal/domain"
+	"github.com/MowlCoder/heimdall/internal/metrics"
 )
 
 type notifier interface {
@@ -18,22 +20,50 @@ type notifier interface {
 type ServiceChecker struct {
 	notifier notifier
 
-	services []domain.Service
-	wg       sync.WaitGroup
+	services       []domain.Service
+	wg             sync.WaitGroup
+	metricsBackend string
 }
 
-func NewServiceChecker(notifier notifier, services []domain.Service) *ServiceChecker {
+func NewServiceChecker(notifier notifier, services []domain.Service, metricsBackend string) *ServiceChecker {
 	return &ServiceChecker{
-		notifier: notifier,
-		services: services,
-		wg:       sync.WaitGroup{},
+		notifier:       notifier,
+		services:       services,
+		wg:             sync.WaitGroup{},
+		metricsBackend: metricsBackend,
 	}
 }
 
 func (sc *ServiceChecker) Start(ctx context.Context) {
+
+	var collector metrics.MetricsCollector
+	var client *http.Client
+
+	baseTransport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	//To use any other scraper like Victoria add the implementation here.
+	if sc.metricsBackend == "prometheus" {
+
+		promCollector := metrics.NewPrometheusCollector()
+		promCollector.StartServer("9092")
+		collector = promCollector
+		instrumentClient := http.Client{
+			Transport: metrics.NewInstrumentedRoundTripper(collector, baseTransport),
+			Timeout:   30 * time.Second,
+		}
+
+		client = &instrumentClient
+
+	} else {
+
+		client = &http.Client{
+			Transport: baseTransport,
+		}
+	}
 	for _, service := range sc.services {
 		go func(wg *sync.WaitGroup) {
-			if err := sc.startCheckService(ctx, service); err != nil {
+			if err := sc.startCheckService(ctx, service, client); err != nil {
 				log.Printf("[ERROR]: failed to start check service %s: %v\n", service.Name, err)
 			}
 			wg.Done()
@@ -46,7 +76,7 @@ func (sc *ServiceChecker) WaitShutdown() {
 	sc.wg.Wait()
 }
 
-func (sc *ServiceChecker) startCheckService(ctx context.Context, service domain.Service) error {
+func (sc *ServiceChecker) startCheckService(ctx context.Context, service domain.Service, client *http.Client) error {
 	checkServiceInterval, err := service.ParseInterval()
 	if err != nil {
 		return err

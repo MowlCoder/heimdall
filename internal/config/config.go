@@ -16,8 +16,9 @@ type NotifiersConfig struct {
 }
 
 type Config struct {
-	Services  []domain.Service `json:"services"`
-	Notifiers NotifiersConfig  `json:"notifiers"`
+	Services       []domain.Service `json:"services"`
+	Notifiers      NotifiersConfig  `json:"notifiers"`
+	MetricsBackend string           `json:"metricsBackend"`
 }
 
 func (c Config) IsTelegramEnabled() bool {

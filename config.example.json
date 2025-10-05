@@ -43,5 +43,6 @@
             "webhook": "",
             "enabled": true
         }
-    }
+    },
+    "metricsBackend":"prometheus"
 }
